@@ -1,0 +1,116 @@
+---
+title: "Lab4"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(ggplot2)
+
+defense <- read_excel('../ds202_lab4/cyclonesFootball2020.xlsx', sheet='Defensive')
+str(defense)
+offense <- read_excel('../ds202_lab4/cyclonesFootball2020.xlsx', sheet='Offensive')
+str(offense)
+biography <- read_excel('../ds202_lab4/cyclonesFootball2020.xlsx', sheet='Biography')
+str(biography)
+```
+
+## Pt. 1: Cleaning Data
+
+## 1
+```{r}
+offense$Name <- as.factor(offense$Name)
+offense$Opponent_Opponent <- as.factor(offense$Opponent_Opponent)
+defense$Name <- as.factor(defense$Name)
+defense$Opponent_Opponent <- as.factor(defense$Opponent_Opponent)
+```
+
+## 2
+```{r}
+OffClean <- offense %>% mutate(across(where(is.character), as.numeric))
+DefClean <- defense %>% mutate(across(where(is.character), as.numeric))
+biography$Weight <- as.numeric(biography$Weight)
+```
+## 3
+```{r}
+BioClean <- biography %>% separate(Height, c('feet', 'inches'),"-", convert = TRUE)
+```
+
+## 4
+```{r}
+DefClean <- DefClean %>% group_by(Name, Opponent_Opponent) %>% mutate(number = row_number())
+DefClean <- DefClean %>% ungroup()
+
+OffClean <- OffClean %>% group_by(Name, Opponent_Opponent) %>% mutate(number = row_number())
+OffClean <- OffClean %>% ungroup()
+```
+
+```{r}
+str(OffClean)
+str(DefClean)
+str(BioClean)
+```
+
+
+## Pt. 2: Tidying and exploring
+
+## 1
+```{r}
+StatOffClean <- OffClean %>% pivot_longer(!c('Name', 'Opponent_Opponent', 'number'), names_to = "stat", values_to = "count", values_drop_na = TRUE)
+StatOffClean
+```
+
+## 2
+```{r}
+gameStatOff <- StatOffClean %>% group_by(Name, stat) %>% summarise(Offstat = sum(count))
+```
+
+## 3
+
+Fewer players were able to get heigher stats for each one, while more players have lower stats. 
+```{r}
+ggplot(aes(x = Offstat), data = gameStatOff) + geom_histogram(bins = 30) + facet_wrap(~stat, scales = "free_x") + ggtitle("Offense Player-level Statistics")
+```
+
+## 4
+
+ISU has slightly better offense in the IA vs OK game than in the IA vs OR game because the Recieving yards is higher for the IA vs OK game.
+```{r}
+ORvsOK <- StatOffClean %>% group_by(Opponent_Opponent) %>% filter(stat == 'Receiving_YDS', Opponent_Opponent == "Oregon" | Opponent_Opponent == "Oklahoma" & number == 2) %>% select(Opponent_Opponent, count, Name) %>% pivot_wider(names_from = Opponent_Opponent, values_from = count)
+
+ORvsOK %>% ggplot(aes(x =Oklahoma, y = Oregon)) + geom_point() + xlab("Receiving (yds) VS Oklahoma") + ylab("Receiving (yds) VS Oregon") + ggtitle("Receiving (yds): OK vs OR")
+```
+
+## 5
+```{r}
+BioClean <- BioClean %>% separate(Hometown, c('City', 'State'), ",", convert =TRUE)
+BioClean
+```
+
+## 6
+```{r}
+BioClean %>% group_by(State) %>% summarize(numPlayers = n())
+```
+
+## 7
+
+Brock's passing yards are normally greater than or equal to the teams recieving yards. Brocks passing yds are higher than his rushing yds, which is normally true for the team (the team recieving is higher than the team rushing). When the slacks and tackles are down Brock's recieving yards tend to be higher. 
+
+```{r}
+brock <- OffClean %>% filter(Name == "Purdy, Brock")
+brock <- brock %>% select(Passing_YDS, Rushing_YDS, Opponent_Opponent, number)
+
+teamRush <- StatOffClean %>% filter(stat == 'Rushing_YDS') %>% group_by(Opponent_Opponent, number) %>% summarise(tRush = sum(count))
+teamRecieve <- StatOffClean %>% filter(stat == 'Receiving_YDS') %>% group_by(Opponent_Opponent, number) %>% summarise(tRecieve = sum(count))
+
+teamSacks <- DefClean %>% group_by(Opponent_Opponent, number) %>% summarise(tSacks = sum(Tackles_Sack))
+teamTackles <- DefClean %>% group_by(Opponent_Opponent, number) %>% summarise(tTackles = sum(Tackles_Solo))
+
+bVSt <- brock %>% inner_join(teamRecieve, by = c("Opponent_Opponent", "number")) %>% inner_join(teamRush, by = c("Opponent_Opponent", "number")) %>% inner_join(teamSacks, by = c("Opponent_Opponent", "number")) %>% inner_join(teamTackles, by =c("Opponent_Opponent", "number"))
+bVSt
+```
